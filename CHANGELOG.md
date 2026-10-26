@@ -11,6 +11,17 @@ The version in use shows in the app header and at the bottom of every downloaded
 
 ---
 
+## v0.5.0-beta — 2026-10-26
+### Added
+- **Open camera**: in-app camera (one step). The phone clock is recorded at the exact instant the shutter is tapped, to the millisecond, and used as actual time. A live clock shows in the camera view.
+- The app writes EXIF metadata into the captured photo: DateTimeOriginal, sub-seconds, time zone, device, and the app version (Software field), so Photos shows the correct date taken.
+- Photo metadata panel for in-app captures: capture method, shutter time, time zone, device, image size, SHA-256, EXIF written.
+- **Save result** and **Save photo** open the share sheet; on iPhone tap **Save Image** to put it in the Photos library. Falls back to a download where sharing isn't available.
+### Changed
+- Removed the old **Take photo** button (Safari stripped its metadata). **Choose photo** and **From Files** remain for existing photos.
+### Notes
+- Actual time for in-app captures comes from the phone's network-synced clock at the shutter tap, recorded by this app (not by the iPhone Camera app).
+
 ## v0.4.0-beta — 2026-10-26
 ### Added
 - **Choose from Files (keeps metadata)** button. On iPhone, Safari strips metadata from photos taken or chosen through the photo library; photos opened from the Files app keep their original EXIF date-taken time.
