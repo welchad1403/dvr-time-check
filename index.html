@@ -45,11 +45,11 @@ input:focus-visible,.btn:focus-within{outline:2px solid var(--accent);outline-of
 .parts b{display:block;font:700 26px var(--mono);font-variant-numeric:tabular-nums}
 .parts small{font:600 10px var(--mono);letter-spacing:.1em;color:var(--muted)}
 /* in-app camera */
-.cam{position:fixed;inset:0;z-index:50;background:#000;display:grid;grid-template-rows:auto 1fr auto}
+.cam{position:fixed;inset:0;z-index:50;background:#000;overflow:hidden}
 .cam[hidden]{display:none}
-.cam .hint{color:#fff;text-align:center;font:600 14px var(--sans);padding:max(12px,env(safe-area-inset-top)) 16px 10px;background:rgba(0,0,0,.5)}
-.cam video{width:100%;height:100%;object-fit:contain;min-height:0}
-.cam .bar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:16px max(20px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));background:rgba(0,0,0,.6)}
+.cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.cam .hint{position:absolute;top:0;left:0;right:0;z-index:2;color:#fff;text-align:center;font:600 14px var(--sans);padding:max(12px,env(safe-area-inset-top)) 16px 10px;background:rgba(0,0,0,.5)}
+.cam .bar{position:absolute;left:0;right:0;bottom:0;z-index:2;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:16px max(20px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));background:rgba(0,0,0,.6)}
 .cam .cancel{justify-self:start;background:none;border:0;color:#fff;font:600 17px var(--sans);padding:10px}
 .cam .clock{justify-self:end;color:#fff;font:600 13px var(--mono);font-variant-numeric:tabular-nums;text-align:right}
 .shutter{width:76px;height:76px;border-radius:50%;border:5px solid #fff;background:var(--accent);cursor:pointer}
@@ -107,7 +107,7 @@ input:focus-visible,.btn:focus-within{outline:2px solid var(--accent);outline-of
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <script>
 /* Version: bump this with every change and add an entry to CHANGELOG.md */
-const APP_VERSION = "0.5.0-beta";
+const APP_VERSION = "0.5.1-beta";
 const $ = id => document.getElementById(id);
 $("ver").textContent = "v" + APP_VERSION;
 const pad = n => String(n).padStart(2, "0");

@@ -11,6 +11,10 @@ The version in use shows in the app header and at the bottom of every downloaded
 
 ---
 
+## v0.5.1-beta — 2026-10-26
+### Fixed
+- iPhone: the camera's shutter bar disappeared off the bottom of the screen once the camera started. The shutter bar and hint are now pinned over the camera view.
+
 ## v0.5.0-beta — 2026-10-26
 ### Added
 - **Open camera**: in-app camera (one step). The phone clock is recorded at the exact instant the shutter is tapped, to the millisecond, and used as actual time. A live clock shows in the camera view.
