@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f1720">
+<title>DVR Time Check</title>
+<style>
+:root{--bg:#0f1720;--panel:#18222d;--ink:#eef2f5;--muted:#93a1af;--line:#2a3743;--accent:#f08a2c;--osd:#f2c14e;--fast:#ff7a6b;--slow:#79aefc;--ok:#5fcf93;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Roboto Mono",monospace;--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans)}
+.wrap{max-width:520px;margin:0 auto;padding:max(12px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));display:grid;gap:12px}
+h1{margin:0;font:700 15px var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.photo{position:relative;background:#000;border-radius:10px;overflow:hidden;aspect-ratio:16/10;display:grid;place-items:center}
+.photo img{width:100%;height:100%;object-fit:contain}
+.photo .empty{color:var(--muted);font-size:14px;text-align:center;padding:20px}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btn{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:48px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:600 15px var(--sans);cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#1a0e02}
+.btn input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.btn:disabled{opacity:.5}
+.status{font-size:13px;color:var(--muted);min-height:1.3em}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;display:grid;gap:10px}
+.row{display:grid;gap:3px}
+.lbl{font:600 11px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+.lbl small{letter-spacing:0;text-transform:none;font-weight:400}
+.row input{width:100%;font:600 22px var(--mono);font-variant-numeric:tabular-nums;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0}
+.row.dvr input{color:var(--osd)}
+.off{border-top:1px dashed var(--line);padding-top:10px;display:grid;gap:2px}
+.big{font:700 clamp(34px,11vw,48px) var(--mono);font-variant-numeric:tabular-nums;line-height:1.1}
+.verdict{font:700 17px var(--sans);text-transform:uppercase;letter-spacing:.03em}
+.fast{color:var(--fast)}.slow{color:var(--slow)}.ok{color:var(--ok)}
+.rule{font-size:14px;color:var(--muted)}
+input:focus-visible,.btn:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.meta{display:grid;gap:0;font:13px var(--mono)}
+.meta div{display:grid;grid-template-columns:9.5em 1fr;gap:8px;padding:5px 0;border-bottom:1px dashed var(--line)}
+.meta div:last-child{border-bottom:0}
+.meta span:first-child{color:var(--muted)}
+.meta span:last-child{word-break:break-all;font-variant-numeric:tabular-nums}
+.meta .warn{color:var(--fast)}
+.parts{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center}
+.parts div{background:var(--bg);border-radius:8px;padding:6px 2px}
+.parts b{display:block;font:700 26px var(--mono);font-variant-numeric:tabular-nums}
+.parts small{font:600 10px var(--mono);letter-spacing:.1em;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>DVR Time Check</h1>
+  <div class="photo"><img id="photo" alt="" hidden><div class="empty" id="empty">Take a photo of the DVR screen with its date/time showing.</div></div>
+  <div class="btns">
+    <span class="btn primary">Take photo<input type="file" id="camIn" accept="image/*" capture="environment" aria-label="Take photo"></span>
+    <span class="btn">Choose photo<input type="file" id="pickIn" accept="image/*" aria-label="Choose photo"></span>
+  </div>
+  <div class="status" id="status"></div>
+  <div class="card" id="card">
+    <div class="row dvr"><div class="lbl">DVR time <small>check against photo</small></div><input type="datetime-local" step="1" id="dvrTime"></div>
+    <div class="row"><div class="lbl">Actual time <small id="realSrc"></small></div><input type="datetime-local" step="1" id="realTime"></div>
+    <div class="off">
+      <div class="lbl">Offset (DVR − actual)</div>
+      <div class="parts" id="parts">
+        <div><b id="pD">—</b><small>DAYS</small></div><div><b id="pH">—</b><small>HOURS</small></div>
+        <div><b id="pM">—</b><small>MIN</small></div><div><b id="pS">—</b><small>SEC</small></div>
+      </div>
+      <div class="verdict" id="verdict"></div>
+      <div class="rule" id="rule"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="lbl">Photo metadata <small>evidence of actual time</small></div>
+    <div class="meta" id="meta"><div><span>—</span><span>Take a photo to see its metadata.</span></div></div>
+  </div>
+  <div class="btns">
+    <button class="btn" id="dlBtn">Download result image</button>
+    <button class="btn" id="origBtn" disabled>Save original photo</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2, "0");
+const toInput = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+const fromInput = v => { const m = v && v.match(/^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)(?::(\d\d))?/); return m ? new Date(+m[1], m[2]-1, +m[3], +m[4], +m[5], +(m[6]||0)) : null; };
+const fmt = d => `${pad(d.getMonth()+1)}/${pad(d.getDate())}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+let realSource = "", busy = false;
+
+/* ---- photo metadata (EXIF) ---- */
+let photoFile = null, metaRows = [];
+function exifRead(buf){
+  const v = new DataView(buf); if (v.byteLength < 4 || v.getUint16(0) !== 0xFFD8) return null;
+  let o = 2;
+  while (o + 4 < v.byteLength){
+    const mk = v.getUint16(o), len = v.getUint16(o+2);
+    if (mk === 0xFFE1 && v.getUint32(o+4) === 0x45786966){
+      const t = o + 10, le = v.getUint16(t) === 0x4949;
+      const u16 = p => v.getUint16(p, le), u32 = p => v.getUint32(p, le);
+      const str = (p, n) => { let s=""; for (let i=0;i<n;i++){ const c=v.getUint8(p+i); if(!c) break; s+=String.fromCharCode(c);} return s; };
+      const ifd = s => { const out = {}, n = u16(s); for (let i=0;i<n;i++){ const e=s+2+i*12, tag=u16(e), type=u16(e+2), cnt=u32(e+4);
+        if (type===2) out[tag]=str(cnt>4? t+u32(e+8) : e+8, cnt); else if (type===4) out[tag]=u32(e+8);} return out; };
+      try{ const i0 = ifd(t + u32(t+4)), ex = i0[0x8769] ? ifd(t + i0[0x8769]) : {};
+        const orig = ex[0x9003] || i0[0x0132] || "";
+        const m = orig.match(/(\d{4}):(\d\d):(\d\d) (\d\d):(\d\d):(\d\d)/);
+        return { date: m ? new Date(+m[1], m[2]-1, +m[3], +m[4], +m[5], +m[6]) : null,
+          origTag: ex[0x9003] ? "DateTimeOriginal" : (i0[0x0132] ? "DateTime" : ""), orig,
+          sub: ex[0x9291] || "", tz: ex[0x9011] || ex[0x9010] || "", digitized: ex[0x9004] || "", modified: i0[0x0132] || "",
+          make: (i0[0x010F]||"").trim(), model: (i0[0x0110]||"").trim(), software: (i0[0x0131]||"").trim() };
+      } catch(e){ return null; }
+    }
+    if ((mk & 0xFF00) !== 0xFF00) break;
+    o += 2 + len;
+  }
+  return null;
+}
+
+/* ---- read DVR time from text ---- */
+function parseDvr(text, ref){
+  const t = text.replace(/[Oo]/g,"0").replace(/[lI|]/g,"1");
+  const tm = t.match(/(\d{1,2})\s*[:.]\s*(\d{2})\s*[:.]\s*(\d{2})(?:\s*([AaPp])\.?\s*[Mm]?)?/);
+  if (!tm) return null;
+  let h = +tm[1]; const mi = +tm[2], s = +tm[3];
+  if (tm[4]) { const pm = /p/i.test(tm[4]); if (pm && h < 12) h += 12; if (!pm && h === 12) h = 0; }
+  if (h > 23 || mi > 59 || s > 59) return null;
+  let y = ref.getFullYear(), mo = ref.getMonth()+1, d = ref.getDate(), dateFound = false;
+  const ymd = t.match(/(20\d\d)\s*[-\/.]\s*(\d{1,2})\s*[-\/.]\s*(\d{1,2})/);
+  const xdy = t.match(/(\d{1,2})\s*[-\/.]\s*(\d{1,2})\s*[-\/.]\s*(20\d\d|\d\d)(?!\s*[:.])/);
+  if (ymd){ y=+ymd[1]; mo=+ymd[2]; d=+ymd[3]; dateFound = true; }
+  else if (xdy){
+    const a=+xdy[1], b=+xdy[2]; y = xdy[3].length===2 ? 2000 + +xdy[3] : +xdy[3];
+    // US order (MM/DD) unless that is impossible or DD/MM matches the photo date
+    if (a > 12 || (b === ref.getMonth()+1 && a === ref.getDate() && !(a === ref.getMonth()+1 && b === ref.getDate()))) { d=a; mo=b; } else { mo=a; d=b; }
+    dateFound = true;
+  }
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) { y = ref.getFullYear(); mo = ref.getMonth()+1; d = ref.getDate(); dateFound = false; }
+  return { date: new Date(y, mo-1, d, h, mi, s), dateFound, raw: (ymd||xdy ? (ymd||xdy)[0] + " " : "") + tm[0] };
+}
+
+function prep(img, invert){
+  const sc = Math.min(2, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
+  const c = document.createElement("canvas"); c.width = Math.round(img.naturalWidth*sc); c.height = Math.round(img.naturalHeight*sc);
+  const g = c.getContext("2d"); g.drawImage(img, 0, 0, c.width, c.height);
+  const px = g.getImageData(0, 0, c.width, c.height), p = px.data;
+  for (let i=0;i<p.length;i+=4){
+    let y = 0.299*p[i] + 0.587*p[i+1] + 0.114*p[i+2];
+    if (invert) y = y > 170 ? 0 : 255;          // bright overlay text -> black on white
+    p[i]=p[i+1]=p[i+2]=y;
+  }
+  g.putImageData(px, 0, 0); return c;
+}
+
+let worker = null;
+async function getWorker(){
+  if (!worker){
+    worker = await Tesseract.createWorker("eng");
+    await worker.setParameters({ tessedit_char_whitelist: "0123456789:/-.APMapm ", tessedit_pageseg_mode: "11" });
+  }
+  return worker;
+}
+
+async function ocr(img, ref){
+  const st = $("status");
+  if (!window.Tesseract){ st.textContent = "Time reader didn't load (needs internet the first time). Type the DVR time."; return; }
+  st.textContent = "Reading DVR time… (first use downloads the reader, ~10 s)";
+  try{
+    const w = await getWorker();
+    let r = null;
+    for (const inv of [true, false]){
+      const { data } = await w.recognize(prep(img, inv));
+      r = parseDvr(data.text, ref);
+      if (r) break;
+    }
+    if (r){
+      $("dvrTime").value = toInput(r.date); compute();
+      st.textContent = `Read "${r.raw.trim()}". ${r.dateFound ? "" : "No date found; used the photo's date. "}Check it against the photo and fix if needed.`;
+    } else st.textContent = "Couldn't read a time from the photo. Type the DVR time below.";
+  } catch(e){ st.textContent = "Reading failed. Type the DVR time below."; }
+}
+
+async function takeFile(file, live){
+  if (!file || busy) return;
+  busy = true;
+  const arrived = new Date();
+  const img = $("photo"); img.hidden = false; $("empty").hidden = true;
+  img.src = URL.createObjectURL(file);
+  await img.decode().catch(() => {});
+  let ref = null, x = null, buf = null;
+  try { buf = await file.arrayBuffer(); x = exifRead(buf); } catch(e){}
+  if (x && x.date) { ref = x.date; if (x.sub) ref.setMilliseconds(Math.round(parseFloat("0." + x.sub) * 1000)); realSource = "from photo metadata"; }
+  if (!ref && file.lastModified && (!live || Math.abs(arrived - file.lastModified) < 120000)) { ref = new Date(file.lastModified); realSource = "from file time"; }
+  if (!ref) { ref = arrived; realSource = "phone clock now — check"; }
+  $("realTime").value = toInput(ref); $("realSrc").textContent = realSource;
+  $("dvrTime").value = "";
+  photoFile = file; $("origBtn").disabled = false;
+  let hash = "unavailable";
+  try { if (buf && crypto.subtle) hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", buf))].map(b => b.toString(16).padStart(2,"0")).join(""); } catch(e){}
+  const lm = file.lastModified ? new Date(file.lastModified) : null;
+  metaRows = [
+    ["File name", file.name || "(none)"],
+    ["File size", file.size.toLocaleString() + " bytes"],
+    ["SHA-256", hash],
+    ["Camera", x && (x.make || x.model) ? `${x.make} ${x.model}`.trim() : "not in file"],
+    ["Software", x && x.software || "not in file"],
+    [x && x.origTag ? `EXIF ${x.origTag}` : "EXIF date taken", x && x.orig ? x.orig + (x.sub ? "." + x.sub : "") : "NOT FOUND", !(x && x.orig)],
+    ["EXIF time zone", x && x.tz || "not in file"],
+    ["EXIF digitized", x && x.digitized || "not in file"],
+    ["File last modified", lm ? fmt(lm) + "." + String(lm.getMilliseconds()).padStart(3,"0") : "not available"],
+    ["Photo received", fmt(arrived)],
+    ["Actual time used", realSource]
+  ];
+  $("meta").replaceChildren(...metaRows.map(([k, v, warn]) => { const d = document.createElement("div"); const a = document.createElement("span"), b = document.createElement("span");
+    a.textContent = k; b.textContent = v; if (warn) b.className = "warn"; d.append(a, b); return d; }));
+  compute();
+  await ocr(img, ref);
+  busy = false;
+}
+$("camIn").addEventListener("change", e => { takeFile(e.target.files[0], true); e.target.value = ""; });
+$("pickIn").addEventListener("change", e => { takeFile(e.target.files[0], false); e.target.value = ""; });
+
+/* ---- offset ---- */
+let off = null;
+function dur(sec){ sec = Math.abs(sec); const d=Math.floor(sec/86400), h=Math.floor(sec%86400/3600), m=Math.floor(sec%3600/60), s=sec%60;
+  return { d, h, m, s, clock: `${d}d ${pad(h)}h ${pad(m)}m ${pad(s)}s`,
+    words: `${d} day${d===1?"":"s"}, ${h} hour${h===1?"":"s"}, ${m} minute${m===1?"":"s"}, ${s} second${s===1?"":"s"}` }; }
+function compute(){
+  const dvr = fromInput($("dvrTime").value), real = fromInput($("realTime").value);
+  const v = $("verdict"), P = ["pD","pH","pM","pS"];
+  if (!dvr || !real){ off = null; P.forEach(id => { $(id).textContent = "—"; $(id).className = ""; }); v.textContent = ""; $("rule").textContent = ""; return; }
+  off = Math.round((dvr - real) / 1000); const D = dur(off);
+  const cls = off > 0 ? "fast" : off < 0 ? "slow" : "ok";
+  [D.d, D.h, D.m, D.s].forEach((n, i) => { $(P[i]).textContent = i ? pad(n) : n; $(P[i]).className = cls; });
+  v.className = "verdict " + cls;
+  v.textContent = off === 0 ? "DVR matches actual time" : `DVR is ${off > 0 ? "fast (ahead)" : "slow (behind)"}`;
+  $("rule").textContent = off === 0 ? "No correction needed." : `${D.words}. Actual time = DVR time ${off > 0 ? "minus" : "plus"} ${D.clock}.`;
+}
+$("dvrTime").addEventListener("input", compute);
+$("realTime").addEventListener("input", () => { realSource = "entered"; $("realSrc").textContent = realSource; compute(); });
+
+/* ---- download image ---- */
+$("dlBtn").addEventListener("click", () => {
+  const dvr = fromInput($("dvrTime").value), real = fromInput($("realTime").value);
+  if (!dvr || !real){ $("status").textContent = "Enter both times first."; return; }
+  const W = 1080, img = $("photo"), hasImg = !img.hidden && img.naturalWidth;
+  const ph = hasImg ? Math.round(W * Math.min(img.naturalHeight / img.naturalWidth, 1)) : 0;
+  const c = document.createElement("canvas"); c.width = W; c.height = ph + 640 + (metaRows.length ? 80 + metaRows.length * 64 : 0);
+  const g = c.getContext("2d"); g.fillStyle = "#0f1720"; g.fillRect(0, 0, W, c.height);
+  if (hasImg){ const s = Math.min(W / img.naturalWidth, ph / img.naturalHeight), w = img.naturalWidth*s, h = img.naturalHeight*s;
+    g.fillStyle = "#000"; g.fillRect(0,0,W,ph); g.drawImage(img, (W-w)/2, (ph-h)/2, w, h); }
+  let y = ph + 70; const L = 50, mono = "ui-monospace, Menlo, Consolas, monospace", sans = "system-ui, Roboto, sans-serif";
+  const line = (lbl, val, col) => { g.font = `600 26px ${mono}`; g.fillStyle = "#93a1af"; g.fillText(lbl, L, y);
+    g.font = `700 46px ${mono}`; g.fillStyle = col; g.fillText(val, L, y + 54); y += 120; };
+  line("DVR TIME", fmt(dvr), "#f2c14e");
+  line(`ACTUAL TIME (${realSource.toUpperCase()})`, fmt(real), "#eef2f5");
+  const D = dur(off), col = off > 0 ? "#ff7a6b" : off < 0 ? "#79aefc" : "#5fcf93";
+  g.font = `600 26px ${mono}`; g.fillStyle = "#93a1af"; g.fillText("OFFSET (DVR − ACTUAL)", L, y);
+  g.font = `700 64px ${mono}`; g.fillStyle = col; g.fillText((off>0?"+ ":off<0?"− ":"") + D.clock, L, y + 80);
+  g.font = `700 34px ${sans}`; g.fillText(off === 0 ? "DVR MATCHES ACTUAL TIME" : `DVR IS ${off>0?"FAST (AHEAD)":"SLOW (BEHIND)"}`, L, y + 135);
+  g.font = `400 28px ${sans}`; g.fillStyle = "#c4cfd9";
+  g.fillText(`${D.words}`, L, y + 180);
+  if (off) g.fillText(`Actual time = DVR time ${off>0?"minus":"plus"} ${D.clock}`, L, y + 220);
+  y += 300;
+  if (metaRows.length){
+    g.strokeStyle = "#2a3743"; g.lineWidth = 2; g.beginPath(); g.moveTo(L, y - 40); g.lineTo(W - L, y - 40); g.stroke();
+    g.font = `600 26px ${mono}`; g.fillStyle = "#93a1af"; g.fillText("PHOTO METADATA", L, y); y += 50;
+    for (const [k, v, warn] of metaRows){
+      g.font = `400 22px ${mono}`; g.fillStyle = "#93a1af"; g.fillText(k, L, y);
+      g.fillStyle = warn ? "#ff7a6b" : "#eef2f5"; g.font = `${String(v).length > 40 ? "400 17px" : "400 22px"} ${mono}`;
+      g.fillText(String(v), L + 330, y); y += 64;
+    }
+  }
+  c.toBlob(b => { const n = new Date(); dl(b, `DVR_offset_${stamp(n)}.png`); $("status").textContent = "Result image saved to Downloads."; }, "image/png");
+});
+const stamp = n => `${n.getFullYear()}${pad(n.getMonth()+1)}${pad(n.getDate())}_${pad(n.getHours())}${pad(n.getMinutes())}${pad(n.getSeconds())}`;
+function dl(blob, name){ const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+/* original photo, byte-for-byte, so its metadata and hash can be verified later */
+$("origBtn").addEventListener("click", () => {
+  if (!photoFile) return;
+  const ext = (photoFile.name.match(/\.\w+$/) || [".jpg"])[0];
+  dl(photoFile, `DVR_photo_${stamp(new Date())}${ext}`);
+  $("status").textContent = "Original photo saved to Downloads, unchanged (same SHA-256).";
+});
+</script>
+</body>
+</html>
