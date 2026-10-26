@@ -18,6 +18,7 @@ h1{margin:0;font:700 15px var(--sans);letter-spacing:.14em;text-transform:upperc
 .btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .btn{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:48px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:600 15px var(--sans);cursor:pointer}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#1a0e02}
+.btn.wide{grid-column:1/-1;font-size:14px}
 .btn input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
 .btn:disabled{opacity:.5}
 .status{font-size:13px;color:var(--muted);min-height:1.3em}
@@ -52,11 +53,12 @@ input:focus-visible,.btn:focus-within{outline:2px solid var(--accent);outline-of
   <div class="btns">
     <span class="btn primary">Take photo<input type="file" id="camIn" accept="image/*" capture="environment" aria-label="Take photo"></span>
     <span class="btn">Choose photo<input type="file" id="pickIn" accept="image/*" aria-label="Choose photo"></span>
+    <span class="btn wide">Choose from Files (keeps metadata)<input type="file" id="fileIn" aria-label="Choose from Files"></span>
   </div>
   <div class="status" id="status"></div>
   <div class="card" id="card">
-    <div class="row dvr"><div class="lbl">DVR time <small>check against photo</small></div><input type="datetime-local" step="1" id="dvrTime"></div>
-    <div class="row"><div class="lbl">Actual time <small id="realSrc"></small></div><input type="datetime-local" step="1" id="realTime"></div>
+    <div class="row dvr"><div class="lbl">DVR time <small>check against photo</small></div><input type="text" id="dvrTime" placeholder="MM/DD/YYYY HH:MM:SS" inputmode="text" autocomplete="off" spellcheck="false"></div>
+    <div class="row"><div class="lbl">Actual time <small id="realSrc"></small></div><input type="text" id="realTime" placeholder="MM/DD/YYYY HH:MM:SS" inputmode="text" autocomplete="off" spellcheck="false"></div>
     <div class="off">
       <div class="lbl">Offset (DVR − actual)</div>
       <div class="parts" id="parts">
@@ -81,8 +83,15 @@ input:focus-visible,.btn:focus-within{outline:2px solid var(--accent);outline-of
 <script>
 const $ = id => document.getElementById(id);
 const pad = n => String(n).padStart(2, "0");
-const toInput = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-const fromInput = v => { const m = v && v.match(/^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)(?::(\d\d))?/); return m ? new Date(+m[1], m[2]-1, +m[3], +m[4], +m[5], +(m[6]||0)) : null; };
+const toInput = d => `${pad(d.getMonth()+1)}/${pad(d.getDate())}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+const fromInput = v => {
+  const m = v && v.trim().match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})[ T,]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp][Mm])?$/);
+  if (!m) return null;
+  let h = +m[4]; if (m[7]) { const pm = /p/i.test(m[7]); if (pm && h < 12) h += 12; if (!pm && h === 12) h = 0; }
+  const mo = +m[1], d = +m[2], mi = +m[5], s = +(m[6] || 0);
+  if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59 || s > 59) return null;
+  return new Date(+m[3], mo - 1, d, h, mi, s);
+};
 const fmt = d => `${pad(d.getMonth()+1)}/${pad(d.getDate())}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 let realSource = "", busy = false;
 
@@ -143,7 +152,9 @@ function parseDvr(text, ref){
   const xdy = t.match(/(\d{1,2})\s*[-\/.]\s*(\d{1,2})\s*[-\/.]\s*(20\d\d|\d\d)(?!\s*[:.])/);
   if (ymd){ y=+ymd[1]; mo=+ymd[2]; d=+ymd[3]; dateFound = true; }
   else if (xdy){
-    const a=+xdy[1], b=+xdy[2]; y = xdy[3].length===2 ? 2000 + +xdy[3] : +xdy[3];
+    // OCR often reads a leading 0 as 8, 6 or 9 ("88/31"): fix two-digit values that can't be a month or day
+    const fix = s => (s.length === 2 && +s > 31 && /[0689]/.test(s[0])) ? +("0" + s[1]) : +s;
+    const a=fix(xdy[1]), b=fix(xdy[2]); y = xdy[3].length===2 ? 2000 + +xdy[3] : +xdy[3];
     // US order (MM/DD) unless that is impossible or DD/MM matches the photo date
     if (a > 12 || (b === ref.getMonth()+1 && a === ref.getDate() && !(a === ref.getMonth()+1 && b === ref.getDate()))) { d=a; mo=b; } else { mo=a; d=b; }
     dateFound = true;
@@ -233,6 +244,7 @@ async function takeFile(file, live){
 }
 $("camIn").addEventListener("change", e => { takeFile(e.target.files[0], true); e.target.value = ""; });
 $("pickIn").addEventListener("change", e => { takeFile(e.target.files[0], false); e.target.value = ""; });
+$("fileIn").addEventListener("change", e => { takeFile(e.target.files[0], false); e.target.value = ""; });
 
 /* ---- offset ---- */
 let off = null;
