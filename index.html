@@ -48,7 +48,7 @@ input:focus-visible,.btn:focus-within{outline:2px solid var(--accent);outline-of
 </head>
 <body>
 <div class="wrap">
-  <h1>DVR Time Check</h1>
+  <h1>DVR Time Check <span id="ver" style="font-weight:400;letter-spacing:.04em;text-transform:none"></span></h1>
   <div class="photo"><img id="photo" alt="" hidden><div class="empty" id="empty">Take a photo of the DVR screen with its date/time showing.</div></div>
   <div class="btns">
     <span class="btn primary">Take photo<input type="file" id="camIn" accept="image/*" capture="environment" aria-label="Take photo"></span>
@@ -81,7 +81,10 @@ input:focus-visible,.btn:focus-within{outline:2px solid var(--accent);outline-of
 
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <script>
+/* Version: bump this with every change and add an entry to CHANGELOG.md */
+const APP_VERSION = "0.4.0-beta";
 const $ = id => document.getElementById(id);
+$("ver").textContent = "v" + APP_VERSION;
 const pad = n => String(n).padStart(2, "0");
 const toInput = d => `${pad(d.getMonth()+1)}/${pad(d.getDate())}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 const fromInput = v => {
@@ -297,6 +300,8 @@ $("dlBtn").addEventListener("click", () => {
       g.fillText(String(v), L + 330, y); y += 64;
     }
   }
+  g.font = `400 20px ${mono}`; g.fillStyle = "#93a1af";
+  g.fillText(`DVR Time Check v${APP_VERSION} · generated ${fmt(new Date())}`, L, c.height - 30);
   c.toBlob(b => { const n = new Date(); dl(b, `DVR_offset_${stamp(n)}.png`); $("status").textContent = "Result image saved to Downloads."; }, "image/png");
 });
 const stamp = n => `${n.getFullYear()}${pad(n.getMonth()+1)}${pad(n.getDate())}_${pad(n.getHours())}${pad(n.getMinutes())}${pad(n.getSeconds())}`;
