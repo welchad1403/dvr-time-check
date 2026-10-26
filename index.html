@@ -88,13 +88,31 @@ let realSource = "", busy = false;
 
 /* ---- photo metadata (EXIF) ---- */
 let photoFile = null, metaRows = [];
+/* Find the EXIF block in any container (JPEG, HEIC/HEIF, PNG, WebP): look for "Exif\0\0" + TIFF header */
+function findTiff(v){
+  const n = Math.min(v.byteLength, 4 * 1024 * 1024) - 10;
+  for (let i = 0; i < n; i++){
+    if (v.getUint32(i) === 0x45786966 && v.getUint16(i+4) === 0){   // "Exif\0\0"
+      const t = i + 6, bo = v.getUint32(t);
+      if (bo === 0x4D4D002A || bo === 0x49492A00) return t;
+    }
+  }
+  return -1;
+}
+function fileKind(v){
+  if (v.byteLength < 12) return "unknown";
+  if (v.getUint16(0) === 0xFFD8) return "JPEG";
+  if (v.getUint32(0) === 0x89504E47) return "PNG";
+  if (v.getUint32(4) === 0x66747970){ const b = String.fromCharCode(v.getUint8(8),v.getUint8(9),v.getUint8(10),v.getUint8(11)); return /hei|mif|msf/.test(b) ? `HEIC (${b})` : `ISO (${b})`; }
+  if (v.getUint32(0) === 0x52494646) return "WebP";
+  return "unknown";
+}
 function exifRead(buf){
-  const v = new DataView(buf); if (v.byteLength < 4 || v.getUint16(0) !== 0xFFD8) return null;
-  let o = 2;
-  while (o + 4 < v.byteLength){
-    const mk = v.getUint16(o), len = v.getUint16(o+2);
-    if (mk === 0xFFE1 && v.getUint32(o+4) === 0x45786966){
-      const t = o + 10, le = v.getUint16(t) === 0x4949;
+  const v = new DataView(buf);
+  {
+    const t = findTiff(v);
+    if (t >= 0){
+      const le = v.getUint16(t) === 0x4949;
       const u16 = p => v.getUint16(p, le), u32 = p => v.getUint32(p, le);
       const str = (p, n) => { let s=""; for (let i=0;i<n;i++){ const c=v.getUint8(p+i); if(!c) break; s+=String.fromCharCode(c);} return s; };
       const ifd = s => { const out = {}, n = u16(s); for (let i=0;i<n;i++){ const e=s+2+i*12, tag=u16(e), type=u16(e+2), cnt=u32(e+4);
@@ -108,8 +126,6 @@ function exifRead(buf){
           make: (i0[0x010F]||"").trim(), model: (i0[0x0110]||"").trim(), software: (i0[0x0131]||"").trim() };
       } catch(e){ return null; }
     }
-    if ((mk & 0xFF00) !== 0xFF00) break;
-    o += 2 + len;
   }
   return null;
 }
@@ -197,6 +213,7 @@ async function takeFile(file, live){
   const lm = file.lastModified ? new Date(file.lastModified) : null;
   metaRows = [
     ["File name", file.name || "(none)"],
+    ["File type", (buf ? fileKind(new DataView(buf)) : "unknown") + (file.type ? ` · ${file.type}` : "")],
     ["File size", file.size.toLocaleString() + " bytes"],
     ["SHA-256", hash],
     ["Camera", x && (x.make || x.model) ? `${x.make} ${x.model}`.trim() : "not in file"],
