@@ -48,8 +48,17 @@ input:focus-visible,.btn:focus-within{outline:2px solid var(--accent);outline-of
 .cam{position:fixed;inset:0;z-index:50;background:#000;overflow:hidden}
 .cam[hidden]{display:none}
 .cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
-.cam .hint{position:absolute;top:0;left:0;right:0;z-index:2;color:#fff;text-align:center;font:600 14px var(--sans);padding:max(12px,env(safe-area-inset-top)) 16px 10px;background:rgba(0,0,0,.5)}
-.cam .bar{position:absolute;left:0;right:0;bottom:0;z-index:2;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:16px max(20px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));background:rgba(0,0,0,.6)}
+/* aiming box: only this area is read */
+.aim{position:absolute;left:6%;width:88%;top:50%;aspect-ratio:4/1;transform:translateY(-50%);z-index:1;pointer-events:none;
+  border:3px solid var(--accent);border-radius:8px;box-shadow:0 0 0 100vmax rgba(0,0,0,.45)}
+.aim span{position:absolute;left:0;right:0;top:100%;margin-top:8px;text-align:center;color:#fff;font:600 13px var(--sans);text-shadow:0 1px 3px #000}
+.row input.unsure{border:2px solid var(--fast)}
+.status.warn{color:var(--fast);font-weight:600}
+.readarea{width:100%;max-height:90px;object-fit:contain;background:#fff;border-radius:6px}
+/* controls sit at the TOP: in-app browsers put their own toolbar over the bottom of the page */
+.cam .top{position:absolute;top:0;left:0;right:0;z-index:2;background:rgba(0,0,0,.6);padding-top:env(safe-area-inset-top)}
+.cam .hint{color:#fff;text-align:center;font:600 14px var(--sans);padding:10px 16px 0}
+.cam .bar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:10px max(20px,env(safe-area-inset-right)) 12px max(20px,env(safe-area-inset-left))}
 .cam .cancel{justify-self:start;background:none;border:0;color:#fff;font:600 17px var(--sans);padding:10px}
 .cam .clock{justify-self:end;color:#fff;font:600 13px var(--mono);font-variant-numeric:tabular-nums;text-align:right}
 .shutter{width:76px;height:76px;border-radius:50%;border:5px solid #fff;background:var(--accent);cursor:pointer}
@@ -69,6 +78,7 @@ input:focus-visible,.btn:focus-within{outline:2px solid var(--accent);outline-of
     <input type="file" id="camIn" accept="image/*" capture="environment" hidden>
   </div>
   <div class="status" id="status"></div>
+  <img id="readArea" class="readarea" alt="Area the reader used" hidden>
   <div class="card" id="card">
     <div class="row dvr"><div class="lbl">DVR time <small>check against photo</small></div><input type="text" id="dvrTime" placeholder="MM/DD/YYYY HH:MM:SS" inputmode="text" autocomplete="off" spellcheck="false"></div>
     <div class="row"><div class="lbl">Actual time <small id="realSrc"></small></div><input type="text" id="realTime" placeholder="MM/DD/YYYY HH:MM:SS" inputmode="text" autocomplete="off" spellcheck="false"></div>
@@ -94,12 +104,15 @@ input:focus-visible,.btn:focus-within{outline:2px solid var(--accent);outline-of
 </div>
 
 <div class="cam" id="cam" hidden>
-  <div class="hint">Fit the DVR's date/time in the frame and hold steady</div>
   <video id="video" playsinline muted autoplay></video>
-  <div class="bar">
-    <button class="cancel" id="camCancel">Cancel</button>
-    <button class="shutter" id="shutter" aria-label="Take photo"></button>
-    <div class="clock" id="liveClock"></div>
+  <div class="aim" id="aim"><span>Fill this box with the DVR date and time</span></div>
+  <div class="top">
+    <div class="hint">Move closer until the date/time fills the box. Tap the button or the picture.</div>
+    <div class="bar">
+      <button class="cancel" id="camCancel">Cancel</button>
+      <button class="shutter" id="shutter" aria-label="Take photo"></button>
+      <div class="clock" id="liveClock"></div>
+    </div>
   </div>
 </div>
 <div class="flash" id="flash"></div>
@@ -107,7 +120,7 @@ input:focus-visible,.btn:focus-within{outline:2px solid var(--accent);outline-of
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <script>
 /* Version: bump this with every change and add an entry to CHANGELOG.md */
-const APP_VERSION = "0.5.1-beta";
+const APP_VERSION = "0.6.0-beta";
 const $ = id => document.getElementById(id);
 $("ver").textContent = "v" + APP_VERSION;
 const pad = n => String(n).padStart(2, "0");
@@ -175,66 +188,202 @@ function parseDvr(text, ref){
   let h = +tm[1]; const mi = +tm[2], s = +tm[3];
   if (tm[4]) { const pm = /p/i.test(tm[4]); if (pm && h < 12) h += 12; if (!pm && h === 12) h = 0; }
   if (h > 23 || mi > 59 || s > 59) return null;
-  let y = ref.getFullYear(), mo = ref.getMonth()+1, d = ref.getDate(), dateFound = false;
-  const ymd = t.match(/(20\d\d)\s*[-\/.]\s*(\d{1,2})\s*[-\/.]\s*(\d{1,2})/);
-  const xdy = t.match(/(\d{1,2})\s*[-\/.]\s*(\d{1,2})\s*[-\/.]\s*(20\d\d|\d\d)(?!\s*[:.])/);
-  if (ymd){ y=+ymd[1]; mo=+ymd[2]; d=+ymd[3]; dateFound = true; }
-  else if (xdy){
-    // OCR often reads a leading 0 as 8, 6 or 9 ("88/31"): fix two-digit values that can't be a month or day
-    const fix = s => (s.length === 2 && +s > 31 && /[0689]/.test(s[0])) ? +("0" + s[1]) : +s;
-    const a=fix(xdy[1]), b=fix(xdy[2]); y = xdy[3].length===2 ? 2000 + +xdy[3] : +xdy[3];
-    // US order (MM/DD) unless that is impossible or DD/MM matches the photo date
-    if (a > 12 || (b === ref.getMonth()+1 && a === ref.getDate() && !(a === ref.getMonth()+1 && b === ref.getDate()))) { d=a; mo=b; } else { mo=a; d=b; }
-    dateFound = true;
+  // Collect every reasonable reading of the date, then keep the one closest to when the photo was taken.
+  // OCR often reads a leading 0 as 8, 6 or 9 ("88/31"): fix two-digit values that can't be a month or day
+  const fix = s => (s.length === 2 && +s > 31 && /[0689]/.test(s[0])) ? +("0" + s[1]) : +s;
+  const yr2 = ref.getFullYear() % 100;
+  const fullYear = s => s.length === 4 && s.startsWith("20") ? +s : 2000 + +s.slice(-2);   // "1026"/"026" → 2026
+  const cands = [];                                        // [year, month, day, order rank]
+  const ymd = t.match(/(\d{3,4})\s*[-\/.]\s*(\d{1,2})\s*[-\/.]\s*(\d{1,2})/);
+  if (ymd && (ymd[1].startsWith("20") || Math.abs(+ymd[1].slice(-2) - yr2) <= 1)) cands.push([fullYear(ymd[1]), fix(ymd[2]), fix(ymd[3]), 0]);
+  const xdy = t.match(/(\d{1,2})\s*[-\/.]\s*(\d{1,2})\s*[-\/.]\s*(\d{4}|\d\d)(?!\s*[:.])/);
+  if (xdy){
+    const a = fix(xdy[1]), b = fix(xdy[2]), yy = fullYear(xdy[3]);
+    cands.push([yy, a, b, 0]);                             // MM/DD (US)
+    cands.push([yy, b, a, 1]);                             // DD/MM
+    if (xdy[3].length === 2) cands.push([2000 + +xdy[1], fix(xdy[2]), +xdy[3], 1]);   // YY-MM-DD
   }
-  if (mo < 1 || mo > 12 || d < 1 || d > 31) { y = ref.getFullYear(); mo = ref.getMonth()+1; d = ref.getDate(); dateFound = false; }
-  return { date: new Date(y, mo-1, d, h, mi, s), dateFound, raw: (ymd||xdy ? (ymd||xdy)[0] + " " : "") + tm[0] };
+  let best = null;
+  for (const [cy, cm, cd, rank] of cands){
+    if (cm < 1 || cm > 12 || cd < 1 || cd > 31) continue;
+    const dt = new Date(cy, cm - 1, cd, h, mi, s);
+    const ahead = dt - ref > 60 * 864e5;                   // more than 60 days in the future: implausible
+    const cost = Math.abs(dt - ref) + (ahead ? 1e13 : 0) + rank * 1000;
+    if (!best || cost < best.cost) best = { dt, cost, ahead };
+  }
+  const raw = (ymd || xdy) ? (ymd || xdy)[0] + " " + tm[0] : tm[0];
+  if (best && !best.ahead) return { date: best.dt, dateFound: true, raw };
+  return { date: new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), h, mi, s), dateFound: false, raw };
 }
 
-function prep(img, invert){
-  const sc = Math.min(2, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
-  const c = document.createElement("canvas"); c.width = Math.round(img.naturalWidth*sc); c.height = Math.round(img.naturalHeight*sc);
-  const g = c.getContext("2d"); g.drawImage(img, 0, 0, c.width, c.height);
-  const px = g.getImageData(0, 0, c.width, c.height), p = px.data;
-  for (let i=0;i<p.length;i+=4){
-    let y = 0.299*p[i] + 0.587*p[i+1] + 0.114*p[i+2];
-    if (invert) y = y > 170 ? 0 : 255;          // bright overlay text -> black on white
-    p[i]=p[i+1]=p[i+2]=y;
+/* ---- image cleanup: several versions of the read area, each tried by the reader ---- */
+// crop = {x,y,w,h} in image pixels (aiming box), or null for the whole image
+function cropCanvas(img, crop){
+  const r = crop || { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight };
+  const target = crop ? 1400 : 2000;                       // enlarge a small box, shrink a big photo
+  const sc = Math.max(0.25, Math.min(4, target / r.w));
+  const c = document.createElement("canvas"); c.width = Math.round(r.w * sc); c.height = Math.round(r.h * sc);
+  const g = c.getContext("2d"); g.imageSmoothingQuality = "high";
+  g.drawImage(img, r.x, r.y, r.w, r.h, 0, 0, c.width, c.height);
+  return c;
+}
+function otsu(arr){
+  const h = new Array(256).fill(0); for (const v of arr) h[v]++;
+  let sum = 0; for (let i = 0; i < 256; i++) sum += i * h[i];
+  let sB = 0, wB = 0, best = 0, t = 128; const n = arr.length;
+  for (let i = 0; i < 256; i++){ wB += h[i]; if (!wB) continue; const wF = n - wB; if (!wF) break;
+    sB += i * h[i]; const d = sB / wB - (sum - sB) / wF, v = wB * wF * d * d; if (v > best){ best = v; t = i; } }
+  return t;
+}
+function blur3(src, w, h){                                  // 3x3 box blur: smooths screen moiré lines
+  const out = new Uint8ClampedArray(src.length);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++){
+    let s = 0, n = 0;
+    for (let dy = -1; dy <= 1; dy++){ const yy = y + dy; if (yy < 0 || yy >= h) continue;
+      for (let dx = -1; dx <= 1; dx++){ const xx = x + dx; if (xx < 0 || xx >= w) continue; s += src[yy*w+xx]; n++; } }
+    out[y*w+x] = s / n;
   }
-  g.putImageData(px, 0, 0); return c;
+  return out;
+}
+function stretch(a){                                        // contrast stretch, 2%–98%
+  const h = new Array(256).fill(0); for (const v of a) h[v]++;
+  let lo = 0, hi = 255, c = 0; const n = a.length;
+  for (let i = 0; i < 256; i++){ c += h[i]; if (c > n * .02){ lo = i; break; } }
+  c = 0; for (let i = 255; i >= 0; i--){ c += h[i]; if (c > n * .02){ hi = i; break; } }
+  const r = Math.max(1, hi - lo), o = new Uint8ClampedArray(n);
+  for (let i = 0; i < n; i++) o[i] = (a[i] - lo) * 255 / r;
+  return o;
+}
+function adaptive(src, w, h, t){                           // local threshold: each pixel vs. its neighborhood (beats glare)
+  const I = new Float64Array((w+1)*(h+1));
+  for (let y = 1; y <= h; y++){ let row = 0; for (let x = 1; x <= w; x++){ row += src[(y-1)*w + x-1]; I[y*(w+1)+x] = I[(y-1)*(w+1)+x] + row; } }
+  const r = Math.max(8, Math.round(Math.min(w, h * 4) / 16)), dark = new Uint8Array(w*h), bright = new Uint8Array(w*h);
+  let nb = 0, nd = 0;
+  for (let y = 0; y < h; y++){ const y1 = Math.max(0, y-r), y2 = Math.min(h, y+r+1);
+    for (let x = 0; x < w; x++){ const x1 = Math.max(0, x-r), x2 = Math.min(w, x+r+1);
+      const s = I[y2*(w+1)+x2] - I[y1*(w+1)+x2] - I[y2*(w+1)+x1] + I[y1*(w+1)+x1], m = s / ((x2-x1)*(y2-y1)), v = src[y*w+x];
+      if (v > m * (1 + t) + 6){ bright[y*w+x] = 1; nb++; } else if (v < m * (1 - t) - 6){ dark[y*w+x] = 1; nd++; } } }
+  return { bright, dark, nb, nd };
+}
+/* Remove shapes that can't be characters (picture blobs, solid blocks, edge pieces); keep digit-sized shapes.
+   mask: 0 = ink, 255 = paper */
+function cleanShapes(mask, w, h){
+  const lab = new Int32Array(w*h), out = mask.slice(), stack = new Int32Array(w*h);
+  let id = 0; const minArea = Math.max(6, w*h*0.00004);
+  for (let s = 0; s < w*h; s++){
+    if (mask[s] !== 0 || lab[s]) continue;
+    id++; let sp = 0, n = 0, x1 = w, y1 = h, x2 = 0, y2 = 0; stack[sp++] = s; lab[s] = id; const px = [];
+    while (sp){ const p = stack[--sp], x = p % w, y = (p / w) | 0; px.push(p); n++;
+      if (x < x1) x1 = x; if (x > x2) x2 = x; if (y < y1) y1 = y; if (y > y2) y2 = y;
+      if (x > 0 && mask[p-1] === 0 && !lab[p-1]){ lab[p-1] = id; stack[sp++] = p-1; }
+      if (x < w-1 && mask[p+1] === 0 && !lab[p+1]){ lab[p+1] = id; stack[sp++] = p+1; }
+      if (y > 0 && mask[p-w] === 0 && !lab[p-w]){ lab[p-w] = id; stack[sp++] = p-w; }
+      if (y < h-1 && mask[p+w] === 0 && !lab[p+w]){ lab[p+w] = id; stack[sp++] = p+w; } }
+    const bw = x2 - x1 + 1, bh = y2 - y1 + 1, fill = n / (bw * bh);
+    const edge = x1 === 0 || y1 === 0 || x2 === w-1 || y2 === h-1;
+    const drop = n < minArea || bh > 0.85*h || bw > 0.4*w
+      || (edge && (bh > 0.45*h || bw > 0.15*w))
+      || (fill > 0.75 && bw > 0.04*w && bh > 0.04*w);
+    if (drop) for (const p of px) out[p] = 255;
+  }
+  return out;
+}
+function toCanvas(mask, w, h, pad){                         // black text on white, with a white margin
+  const c = document.createElement("canvas"); c.width = w + pad*2; c.height = h + pad*2;
+  const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+  const id = g.createImageData(w, h), p = id.data;
+  for (let i = 0; i < mask.length; i++){ const v = mask[i]; p[i*4] = p[i*4+1] = p[i*4+2] = v; p[i*4+3] = 255; }
+  g.putImageData(id, pad, pad); return c;
+}
+function variants(base, clean){
+  const w = base.width, h = base.height, d = base.getContext("2d").getImageData(0, 0, w, h).data, n = w * h;
+  const lum = new Uint8ClampedArray(n), mx = new Uint8ClampedArray(n);
+  for (let i = 0; i < n; i++){ const r = d[i*4], g = d[i*4+1], b = d[i*4+2];
+    lum[i] = 0.299*r + 0.587*g + 0.114*b; mx[i] = Math.max(r, g, b); }
+  const st = stretch(lum), bl = blur3(st, w, h);
+  const bin = (src, t, textBright) => { const o = new Uint8ClampedArray(n);
+    for (let i = 0; i < n; i++) o[i] = ((src[i] > t) === textBright) ? 0 : 255; return clean ? cleanShapes(o, w, h) : o; };
+  const brightIsText = (src, t) => { let a = 0; for (const v of src) if (v > t) a++; return a < n / 2; };   // text is the minority
+  const out = [];
+  const tS = otsu(st), tB = otsu(bl), pS = brightIsText(st, tS), pB = brightIsText(bl, tB);
+  const ad = adaptive(bl, w, h, 0.12);
+  const adMask = (m, cl = clean) => { const o = new Uint8ClampedArray(n).fill(255); for (let i = 0; i < n; i++) if (m[i]) o[i] = 0; return cl ? cleanShapes(o, w, h) : o; };
+  // most DVR overlays are bright text; try the polarity with fewer "text" pixels first
+  const adFirst = ad.nb > 0 && (ad.nb <= ad.nd || ad.nd === 0) ? [ad.bright, ad.dark] : [ad.dark, ad.bright];
+  out.push({ name: "local threshold", c: toCanvas(adMask(adFirst[0]), w, h, 24) });
+  out.push({ name: "contrast + threshold", c: toCanvas(bin(st, tS, pS), w, h, 24) });
+  out.push({ name: "bright text (v0.5)", c: toCanvas(bin(lum, 170, true), w, h, 24) });
+  out.push({ name: "smoothed + threshold", c: toCanvas(bin(bl, tB, pB), w, h, 24) });
+  out.push({ name: "local threshold, reversed", c: toCanvas(adMask(adFirst[1]), w, h, 24) });
+  out.push({ name: "reverse threshold", c: toCanvas(bin(st, tS, !pS), w, h, 24) });
+  out.push({ name: "plain gray (v0.5)", c: toCanvas(lum, w, h, 24) });
+  out.push({ name: "bright color text", c: toCanvas(bin(mx, 170, true), w, h, 24) });
+  if (clean){                                                // backups without shape cleanup
+    out.push({ name: "local threshold, uncleaned", c: toCanvas(adMask(adFirst[0], false), w, h, 24) });
+    const raw = new Uint8ClampedArray(n); for (let i = 0; i < n; i++) raw[i] = lum[i] > 170 ? 0 : 255;
+    out.push({ name: "bright text, uncleaned", c: toCanvas(raw, w, h, 24) });
+  }
+  return out;
 }
 
 let worker = null;
 async function getWorker(){
   if (!worker){
     worker = await Tesseract.createWorker("eng");
-    await worker.setParameters({ tessedit_char_whitelist: "0123456789:/-.APMapm ", tessedit_pageseg_mode: "11" });
+    await worker.setParameters({ tessedit_char_whitelist: "0123456789:/-.APMapm " });
   }
   return worker;
 }
 
-async function ocr(img, ref){
-  const st = $("status");
+/* Read each version; vote. Two versions agreeing on a full date+time ends the search early. */
+async function ocr(img, ref, crop){
+  const st = $("status"), ra = $("readArea");
   if (!window.Tesseract){ st.textContent = "Time reader didn't load (needs internet the first time). Type the DVR time."; return; }
   st.textContent = "Reading DVR time… (first use downloads the reader, ~10 s)";
   try{
     const w = await getWorker();
-    let r = null;
-    for (const inv of [true, false]){
-      const { data } = await w.recognize(prep(img, inv));
-      r = parseDvr(data.text, ref);
-      if (r) break;
+    const base = cropCanvas(img, crop);
+    const vs = variants(base, !!crop);                      // shape cleanup only for the aiming box
+    const modes = crop ? ["6"] : ["11"];                     // box: block of text; whole photo: sparse text
+    const votes = new Map(); let best = null, tries = 0;
+    outer:
+    for (const v of vs) for (const psm of modes){
+      tries++;
+      st.textContent = `Reading DVR time… try ${tries} of ${vs.length * modes.length}`;
+      await w.setParameters({ tessedit_pageseg_mode: psm });
+      const { data } = await w.recognize(v.c);
+      const r = parseDvr(data.text, ref);
+      if (!r) continue;
+      const key = toInput(r.date);
+      const e = votes.get(key) || { r, n: 0, score: 0, v };
+      e.n++; e.score += (r.dateFound ? 2 : 1) + data.confidence / 100;
+      votes.set(key, e);
+      if (!best || e.score > best.score) best = e;
+      if (e.n >= 3 && r.dateFound) break outer;               // three versions agree: done
     }
-    if (r){
-      $("dvrTime").value = toInput(r.date); compute();
-      st.textContent = `Read "${r.raw.trim()}". ${r.dateFound ? "" : "No date found; used the photo's date. "}Check it against the photo and fix if needed.`;
-    } else st.textContent = "Couldn't read a time from the photo. Type the DVR time below.";
+    if (best){
+      // runner-up: a different reading that also got votes means the versions disagree
+      let second = 0; for (const [k, e] of votes) if (e !== best) second = Math.max(second, e.n);
+      const sure = best.n >= 3 && best.n - second >= 2;   // 3+ versions agree, clearly ahead of any other reading
+      $("dvrTime").value = toInput(best.r.date); compute();
+      $("dvrTime").classList.toggle("unsure", !sure);
+      ra.src = best.v.c.toDataURL("image/png"); ra.hidden = false;
+      st.textContent = sure
+        ? `Read "${best.r.raw.trim()}" (${best.n} of ${tries} versions agreed). ${best.r.dateFound ? "" : "No date found; used the photo's date. "}Check it against the photo.`
+        : `LOW CONFIDENCE: only 1 of ${tries} versions read "${best.r.raw.trim()}". Compare carefully with the photo and fix it, or retake closer.`;
+      st.classList.toggle("warn", !sure);
+    } else {
+      ra.src = base.toDataURL("image/jpeg", 0.8); ra.hidden = false;   // show what was in the box
+      st.textContent = crop ? "Couldn't read a time inside the box. Retake with the time filling the box, or type it below."
+                            : "Couldn't read a time from the photo. Type the DVR time below.";
+    }
   } catch(e){ st.textContent = "Reading failed. Type the DVR time below."; }
 }
 
-async function takeFile(file, live, shutter){
+async function takeFile(file, live, shutter, crop){
   if (!file || busy) return;
   busy = true;
+  $("readArea").hidden = true; $("dvrTime").classList.remove("unsure"); $("status").classList.remove("warn");
   const arrived = new Date();
   resultBlob = null; $("dlBtn").disabled = true;
   const img = $("photo"); img.hidden = false; $("empty").hidden = true;
@@ -280,7 +429,7 @@ async function takeFile(file, live, shutter){
   $("meta").replaceChildren(...metaRows.map(([k, v, warn]) => { const d = document.createElement("div"); const a = document.createElement("span"), b = document.createElement("span");
     a.textContent = k; b.textContent = v; if (warn) b.className = "warn"; d.append(a, b); return d; }));
   compute();
-  await ocr(img, ref);
+  await ocr(img, ref, crop || null);
   busy = false;
 }
 $("camIn").addEventListener("change", e => { takeFile(e.target.files[0], true); e.target.value = ""; });
@@ -317,20 +466,30 @@ function closeCamera(){
 }
 $("camBtn").addEventListener("click", openCamera);
 $("camCancel").addEventListener("click", closeCamera);
-$("shutter").addEventListener("click", () => {
+$("video").addEventListener("click", () => takeShot());
+$("shutter").addEventListener("click", () => takeShot());
+function takeShot(){
   const shutter = new Date();                       // exact moment of the tap, phone clock
-  const v = $("video"); if (!v.videoWidth) return;
+  const v = $("video"); if (!v.videoWidth || !stream) return;
   const c = document.createElement("canvas"); c.width = v.videoWidth; c.height = v.videoHeight;
   c.getContext("2d").drawImage(v, 0, 0);
   shotSize = `${c.width} × ${c.height}`;
+  // map the on-screen aiming box to pixels in the captured frame (video is letterboxed: object-fit contain)
+  const vr = v.getBoundingClientRect(), ar = $("aim").getBoundingClientRect();
+  const sc = Math.min(vr.width / c.width, vr.height / c.height);
+  const ox = vr.left + (vr.width - c.width * sc) / 2, oy = vr.top + (vr.height - c.height * sc) / 2;
+  const mX = ar.width * 0.03, mY = ar.height * 0.08;       // small margin around the box
+  let x = (ar.left - mX - ox) / sc, y = (ar.top - mY - oy) / sc, x2 = (ar.right + mX - ox) / sc, y2 = (ar.bottom + mY - oy) / sc;
+  x = Math.max(0, x); y = Math.max(0, y); x2 = Math.min(c.width, x2); y2 = Math.min(c.height, y2);
+  const crop = (x2 - x > 20 && y2 - y > 10) ? { x: Math.round(x), y: Math.round(y), w: Math.round(x2 - x), h: Math.round(y2 - y) } : null;
   const f = $("flash"); f.style.opacity = "1"; setTimeout(() => f.style.opacity = "0", 120);
   closeCamera();
   c.toBlob(async b => {
     const bytes = addExif(new Uint8Array(await b.arrayBuffer()), shutter);
     const file = new File([bytes], `DVR_${stamp(shutter)}.jpg`, { type: "image/jpeg", lastModified: shutter.getTime() });
-    takeFile(file, true, shutter);
+    takeFile(file, true, shutter, crop);
   }, "image/jpeg", 0.95);
-});
+}
 
 /* Write EXIF (date taken, sub-seconds, time zone, app version) into the captured JPEG */
 function addExif(jpg, d){
@@ -385,7 +544,7 @@ function compute(){
   $("rule").textContent = off === 0 ? "No correction needed." : `${D.words}. Actual time = DVR time ${off > 0 ? "minus" : "plus"} ${D.clock}.`;
   refreshResult();
 }
-$("dvrTime").addEventListener("input", compute);
+$("dvrTime").addEventListener("input", () => { $("dvrTime").classList.remove("unsure"); compute(); });
 $("realTime").addEventListener("input", () => { realSource = "entered"; $("realSrc").textContent = realSource; compute(); });
 
 /* ---- result image: rendered ahead of time so Save can open the share sheet instantly ---- */

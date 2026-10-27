@@ -11,6 +11,24 @@ The version in use shows in the app header and at the bottom of every downloaded
 
 ---
 
+## v0.6.0-beta — 2026-10-27
+### Added
+- **Aiming box** in the camera view. Only the area inside the box is read, enlarged, so screen glare, menus and other text outside it are ignored. Move closer until the DVR date/time fills the box.
+- **Image cleanup**: each photo is read in up to 10 cleaned-up versions (local threshold for glare, contrast stretch, smoothing for screen lines, bright-text and colored-text versions, removal of non-character shapes). The versions vote on the reading.
+- **Confidence check**: a reading is marked confident only when 3 or more versions agree and clearly outvote any other reading. Otherwise the DVR time box turns red and the app says **LOW CONFIDENCE**.
+- Preview of the area that was read, shown under the status line.
+### Changed
+- Dates that can be read more than one way (MM/DD, DD/MM, YY-MM-DD) now use the reading closest to the photo date. Readings more than 60 days in the future are rejected.
+- A damaged year (e.g. "1026" or "026") is repaired to the photo's year.
+### Testing
+- Tested on 16 simulated DVR screen photos with glare, blur, screen lines (moiré), tilt and low contrast. v0.5.2: 7 of 16 read. v0.6.0 aiming box: 6 confident and correct, no confident wrong readings; the rest flagged LOW or left blank for manual entry.
+
+## v0.5.2-beta — 2026-10-26
+### Fixed
+- Shutter button was hidden behind the bottom toolbar of in-app browsers (e.g. links opened from another app). Camera controls now sit at the top of the screen.
+### Added
+- Tapping anywhere on the camera picture also takes the photo.
+
 ## v0.5.1-beta — 2026-10-26
 ### Fixed
 - iPhone: the camera's shutter bar disappeared off the bottom of the screen once the camera started. The shutter bar and hint are now pinned over the camera view.
